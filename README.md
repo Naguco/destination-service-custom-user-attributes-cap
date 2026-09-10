@@ -1,4 +1,4 @@
-# SAML Assertion Inspector
+# XSUAA Custom Attributes for SAML userIdSource in BTP Destination Service
 
 This is a tool to call simply against a SAMLAssertion destination in SAP BTP. The tool itself it is not interesting. What it is interesting is the lessons learned behind this. If you want to reuse this for your own tests, you are free to clone this.
 
