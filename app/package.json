@@ -1,0 +1,9 @@
+{
+  "name": "saml-inspector-approuter",
+  "dependencies": {
+    "@sap/approuter": "^23"
+  },
+  "scripts": {
+    "start": "node node_modules/@sap/approuter/approuter.js"
+  }
+}

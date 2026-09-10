@@ -1,0 +1,56 @@
+_schema-version: "3.1"
+ID: saml-inspector
+version: 1.0.0
+description: SAML Assertion Inspector for BTP Destination Service debugging
+
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm ci
+        - npx cds build --production
+
+modules:
+  - name: saml-inspector-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      memory: 256M
+      instances: 1
+    build-parameters:
+      builder: npm
+    provides:
+      - name: saml-inspector-srv-api
+        properties:
+          url: ${default-url}
+    requires:
+      - name: saml-inspector-xsuaa
+      - name: saml-inspector-destination
+
+  - name: saml-inspector-approuter
+    type: approuter.nodejs
+    path: app/
+    parameters:
+      memory: 128M
+    requires:
+      - name: saml-inspector-xsuaa
+      - name: saml-inspector-srv-api
+        group: destinations
+        properties:
+          name: saml-inspector-srv-api
+          url: ~{url}
+          forwardAuthToken: true
+
+resources:
+  - name: saml-inspector-xsuaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+
+  - name: saml-inspector-destination
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: destination
+      service-plan: lite

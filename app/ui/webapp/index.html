@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAML Assertion Inspector</title>
+  <script
+    id="sap-ui-bootstrap"
+    src="https://ui5.sap.com/1.120/resources/sap-ui-core.js"
+    data-sap-ui-theme="sap_horizon"
+    data-sap-ui-libs="sap.m,sap.ui.layout"
+    data-sap-ui-compatVersion="edge"
+    data-sap-ui-async="true"
+    data-sap-ui-onInit="module:saml/inspector/App"
+    data-sap-ui-resourceroots='{"saml.inspector": "./"}'
+  ></script>
+  <style>
+    body { margin: 0; }
+    #content { height: 100vh; }
+    .sapMPage .sapMPageHeader { position: sticky; top: 0; z-index: 10; }
+  </style>
+</head>
+<body class="sapUiBody">
+  <div id="content"></div>
+
+  <script>
+    sap.ui.define([
+      "sap/m/App",
+      "sap/m/Page",
+      "sap/m/Bar",
+      "sap/m/Title",
+      "sap/m/VBox",
+      "sap/m/HBox",
+      "sap/m/Label",
+      "sap/m/Input",
+      "sap/m/Button",
+      "sap/m/BusyIndicator",
+      "sap/m/IconTabBar",
+      "sap/m/IconTabFilter",
+      "sap/m/Panel",
+      "sap/m/Text",
+      "sap/m/MessageStrip",
+      "sap/ui/core/HTML"
+    ], function (
+      App, Page, Bar, Title, VBox, HBox,
+      Label, Input, Button, BusyIndicator,
+      IconTabBar, IconTabFilter, Panel, Text, MessageStrip, HTML
+    ) {
+      "use strict";
+
+      // ── State ──────────────────────────────────────────────────────────────
+      var oDestInput, oBusyEx, oTabBarEx, oDecodedPreEx, oRawPreEx, oResultPanelEx, oErrorStripEx;
+
+      // ── Helpers ────────────────────────────────────────────────────────────
+      function copyText(text) {
+        navigator.clipboard.writeText(text).catch(function () {
+          var ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        });
+      }
+
+      function prettyXml(xml) {
+        try {
+          var parser = new DOMParser();
+          var doc = parser.parseFromString(xml, "application/xml");
+          var xs = new XMLSerializer();
+          var ugly = xs.serializeToString(doc);
+          var reg = /(>)(<)(\/*)/g;
+          var formatted = ugly.replace(reg, "$1\n$2$3");
+          var pad = 0;
+          return formatted.split("\n").map(function (node) {
+            var indent = 0;
+            if (node.match(/.+<\/\w[^>]*>$/)) { indent = 0; }
+            else if (node.match(/^<\/\w/)) { if (pad !== 0) pad -= 2; }
+            else if (node.match(/^<\w[^>]*[^\/]>.*$/)) { indent = 2; }
+            else { indent = 0; }
+            var padding = new Array(pad + 1).join(" ");
+            pad += indent;
+            return padding + node;
+          }).join("\n");
+        } catch (e) {
+          return xml;
+        }
+      }
+
+      // ── Inspect action ─────────────────────────────────────────────────────
+      function onInspectViaExchange() {
+        var destName = oDestInput.getValue().trim();
+        if (!destName) {
+          oDestInput.setValueState("Error");
+          oDestInput.setValueStateText("Please enter a destination name.");
+          return;
+        }
+        oDestInput.setValueState("None");
+        oErrorStripEx.setVisible(false);
+        oResultPanelEx.setVisible(false);
+        oBusyEx.setVisible(true);
+
+        fetch("/api/inspectSamlViaExchange", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ destinationName: destName })
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            oBusyEx.setVisible(false);
+            var result = data.value !== undefined ? data.value : data;
+            if (result.error) {
+              oErrorStripEx.setText(result.error);
+              oErrorStripEx.setVisible(true);
+              return;
+            }
+            oDecodedPreEx.setContent(
+              "<pre style='margin:0;white-space:pre-wrap;word-break:break-all;font-family:monospace;font-size:0.85rem'>" +
+              result.decoded.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") +
+              "</pre>"
+            );
+            oRawPreEx.setContent(
+              "<pre style='margin:0;white-space:pre-wrap;word-break:break-all;font-family:monospace;font-size:0.85rem'>" +
+              result.raw +
+              "</pre>"
+            );
+            oDecodedPreEx._rawText = result.decoded;
+            oRawPreEx._rawText = result.raw;
+            oResultPanelEx.setVisible(true);
+          })
+          .catch(function (err) {
+            oBusyEx.setVisible(false);
+            oErrorStripEx.setText("Network error: " + err.message);
+            oErrorStripEx.setVisible(true);
+          });
+      }
+
+      // ── UI construction ────────────────────────────────────────────────────
+      sap.ui.require(["sap/ui/core/Core"], function (Core) {
+        Core.ready(function () {
+
+          oDestInput = new Input({
+            placeholder: "e.g. MY_SAML_DESTINATION",
+            width: "28rem",
+            submit: onInspectViaExchange
+          });
+
+          oBusyEx = new BusyIndicator({ size: "2rem" }).addStyleClass("sapUiSmallMarginTop");
+          oBusyEx.setVisible(false);
+
+          oDecodedPreEx = new HTML({ sanitizeContent: false });
+          oRawPreEx = new HTML({ sanitizeContent: false });
+
+          var oDecodedTabEx = new IconTabFilter({
+            text: "Decoded XML",
+            content: [
+              new HBox({
+                justifyContent: "End",
+                items: [
+                  new Button({
+                    text: "Copy",
+                    icon: "sap-icon://copy",
+                    press: function () { copyText(oDecodedPreEx._rawText || ""); }
+                  })
+                ]
+              }).addStyleClass("sapUiTinyMarginBottom"),
+              oDecodedPreEx
+            ]
+          });
+
+          var oRawTabEx = new IconTabFilter({
+            text: "Raw (Base64)",
+            content: [
+              new HBox({
+                justifyContent: "End",
+                items: [
+                  new Button({
+                    text: "Copy",
+                    icon: "sap-icon://copy",
+                    press: function () { copyText(oRawPreEx._rawText || ""); }
+                  })
+                ]
+              }).addStyleClass("sapUiTinyMarginBottom"),
+              oRawPreEx
+            ]
+          });
+
+          oTabBarEx = new IconTabBar({ items: [oDecodedTabEx, oRawTabEx] });
+
+          oResultPanelEx = new Panel({
+            headerText: "Result — Via Token Exchange (user_token grant)",
+            content: [oTabBarEx],
+            visible: false
+          }).addStyleClass("sapUiMediumMarginTop");
+
+          oErrorStripEx = new MessageStrip({
+            type: "Error",
+            showIcon: true,
+            visible: false
+          }).addStyleClass("sapUiMediumMarginTop");
+
+          var oPage = new Page({
+            customHeader: new Bar({
+              contentMiddle: [
+                new Title({ text: "SAML Assertion Inspector", level: "H2" })
+              ]
+            }),
+            content: [
+              new VBox({
+                items: [
+                  new HBox({
+                    alignItems: "Center",
+                    items: [
+                      new Label({ text: "Destination Name", labelFor: oDestInput })
+                        .addStyleClass("sapUiSmallMarginEnd"),
+                      oDestInput,
+                      new Button({
+                        text: "Via Token Exchange",
+                        type: "Emphasized",
+                        press: onInspectViaExchange
+                      }).addStyleClass("sapUiSmallMarginBegin")
+                    ]
+                  }).addStyleClass("sapUiMediumMargin"),
+                  new VBox({
+                    items: [oBusyEx, oErrorStripEx, oResultPanelEx]
+                  }).addStyleClass("sapUiMediumMarginBegin sapUiMediumMarginEnd sapUiMediumMarginBottom")
+                ]
+              })
+            ]
+          });
+
+          new App({ pages: [oPage] }).placeAt("content");
+        });
+      });
+    });
+  </script>
+</body>
+</html>

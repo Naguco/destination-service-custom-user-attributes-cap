@@ -1,0 +1,13 @@
+# Local hybrid testing config — contains CF org/space/instance names
+.cdsrc-private.json
+
+# Build output
+mta_archives/
+gen/
+
+# Dependencies
+node_modules/
+app/node_modules/
+
+# macOS
+.DS_Store

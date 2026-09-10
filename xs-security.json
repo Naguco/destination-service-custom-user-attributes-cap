@@ -1,0 +1,43 @@
+{
+  "xsappname": "saml-inspector",
+  "tenant-mode": "dedicated",
+  "attributes": [
+    {
+      "name": "email",
+      "valueType": "string",
+      "description": "User email from IdP"
+    },
+    {
+      "name": "logonName",
+      "valueType": "string",
+      "description": "SAP logon name from IdP"
+    },
+    {
+      "name": "ec_userid",
+      "valueType": "string",
+      "description": "Employee Central user ID from IdP"
+    }
+  ],
+  "role-templates": [
+    {
+      "name": "User",
+      "description": "Standard user with identity attributes",
+      "attribute-references": [
+        "email",
+        "logonName",
+        "ec_userid"
+      ]
+    }
+  ],
+  "role-collections": [
+    {
+      "name": "SAML Inspector User",
+      "role-template-references": ["$XSAPPNAME.User"]
+    }
+  ],
+  "foreign-scope-references": ["user_attributes"],
+  "oauth2-configuration": {
+    "token-validity": 43200,
+    "redirect-uris": ["https://*.hana.ondemand.com/**", "http://localhost:*/**"]
+  }
+}

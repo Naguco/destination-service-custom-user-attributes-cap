@@ -1,0 +1,19 @@
+{
+  "welcomeFile": "/index.html",
+  "authenticationMethod": "route",
+  "routes": [
+    {
+      "source": "^/api/(.*)",
+      "target": "/api/$1",
+      "destination": "saml-inspector-srv-api",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    },
+    {
+      "source": "^/(.*)",
+      "target": "$1",
+      "localDir": "ui/webapp",
+      "authenticationType": "xsuaa"
+    }
+  ]
+}

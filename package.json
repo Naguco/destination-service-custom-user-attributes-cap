@@ -1,0 +1,27 @@
+{
+  "name": "saml-inspector",
+  "version": "1.0.0",
+  "dependencies": {
+    "@sap-cloud-sdk/connectivity": "^4.9.1",
+    "@sap/cds": "^10",
+    "@sap/xssec": "^4",
+    "axios": "^1",
+    "express": "^4",
+    "passport": "^0"
+  },
+  "devDependencies": {
+    "@sap/cds-dk": "^10"
+  },
+  "scripts": {
+    "start": "cds-serve",
+    "dev": "cds watch"
+  },
+  "cds": {
+    "requires": {
+      "auth": "xsuaa",
+      "destinations": {
+        "kind": "destinations"
+      }
+    }
+  }
+}
