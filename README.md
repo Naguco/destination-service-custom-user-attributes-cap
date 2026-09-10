@@ -1,23 +1,23 @@
 # SAML Assertion Inspector
 
-A CAP Node.js tool for inspecting the SAML assertion that the SAP BTP Destination Service builds on behalf of a logged-in user. You enter a destination name, click a button, and the tool shows you the decoded XML — including the `<saml:NameID>` and every attribute inside the assertion.
+This is a tool to call simply against a SAMLAssertion destination in SAP BTP. The tool itself it is not interesting. What it is interesting is the lessons learned behind this. If you want to reuse this for your own tests, you are free to clone this.
 
 ---
 
 ## Why this tool exists
 
-This project was built to investigate a customer issue in which a CAP application on SAP BTP could not retrieve SuccessFactors  data for users with **concurrent employments**. Users with a single employment worked fine. The inconsistency pointed to an identity resolution problem at the SuccessFactors side.
+This project was built to investigate an issue in which a CAP application on SAP BTP could not retrieve SuccessFactors  data for users with **concurrent employments**. Users with a single employment worked fine. The inconsistency pointed to an identity resolution problem at the SuccessFactors side.
 
 The root cause turned out to be a chain of four related issues:
 
 | # | Problem |
 |---|---------|
 | 1 | `nameIdFormat` was set to `emailAddress` in the destination. SuccessFactors requires the **user ID** (not email) when a user has concurrent employments, because email is ambiguous across them. |
-| 2 | The CAP application's JWT did not contain the SuccessFactors user id — it was only populated with email-based claims from the Azure IdP. |
+| 2 | The CAP application's JWT did not contain the SuccessFactors user id, it was only populated with email-based claims from the Azure IdP. |
 | 3 | The `user_attributes` scope was missing from the token. Without it, the Destination Service cannot call back to XSUAA to retrieve the user's custom attributes, even if those attributes are declared. |
 | 4 | The `userIdSource` JSONPath used the wrong path. It referenced `$['xs.user.attributes']['ec_userid'][0]` (the field as it appears in the raw JWT payload) instead of `$['user_attributes']['ec_userid'][0]` (the field as returned by the XSUAA `/userinfo` endpoint, which is what the Destination Service actually reads). |
 
-The fix required all four issues to be resolved together. This tool was written to make the SAML assertion **visible** at each step, so you can confirm whether a change actually had the expected effect before moving on.
+The fix required all four issues to be resolved together. This tool was written to make sure that the recommendations at xs-security file were correct and aligned with the final resolution.
 
 ### Why custom attributes were the right path
 
@@ -34,8 +34,6 @@ Since modifying the IdP-issued root claims was not an option we decided provisio
 
 ## What the tool does
 
-The single action — **Via Token Exchange** — does the following:
-
 1. Takes the user's JWT from the incoming request (the XSUAA session cookie set by the approuter).
 2. Calls `getDestination({ destinationName, jwt })` from the SAP Cloud SDK. This triggers a token exchange: XSUAA issues a new token scoped to the Destination Service, and the Destination Service uses it to build the SAML assertion.
 3. Returns the Base64-encoded assertion from `destination.authTokens[0]`.
@@ -47,7 +45,7 @@ You can then read the `<saml:NameID>` value and the `<saml:Attribute>` elements 
 
 ## How `xs-security.json` fits in
 
-The `xs-security.json` enables the custom attribute flow that was missing in the customer's application:
+The `xs-security.json` enables the custom attribute flow that was missing in the application when the issue was raising:
 
 ```json
 {
@@ -68,7 +66,7 @@ The `xs-security.json` enables the custom attribute flow that was missing in the
 
 For the fix to work end-to-end, you also need:
 
-1. The IdP attributes mapped in **BTP Cockpit → Security → Trust Configuration** (e.g. `ec_userid` → `employeeId` from IAS).
+1. The IdP attributes mapped (e.g. `ec_userid` → `employeeId` from IAS).
 2. The user assigned the **SAML Inspector User** role collection so that those attribute mappings are active for them.
 
 ---
@@ -77,7 +75,7 @@ For the fix to work end-to-end, you also need:
 
 To reproduce the working state (user ID propagation, not email):
 
-Note here... We are using SAMLAssertion, because the determination of the NameId in the SAML is a logic shared with OauthBearerSamlAssertion destination type that you will use to set up SSFF. In my case, I do not have a SSFF instance, but since the issue was raising at destination level, and not at SSFF level, SAMLAssertion destination type is enough for this analysis.
+Note here... We are using SAMLAssertion, because the determination of the NameId in the SAML is a logic shared with Oauth2SamlBearerAssertion destination type that you will use to set up SSFF. In my case, I do not have a SSFF instance, but since the issue was raising at destination level, and not at SSFF level, SAMLAssertion destination type is enough for this analysis.
 
 | Property | Value |
 |----------|-------|
@@ -130,7 +128,6 @@ The left column must exactly match the `name` fields declared in `xs-security.js
 Prerequisites: [MBT](https://sap.github.io/cloud-mta-build-tool/) and [CF CLI](https://docs.cloudfoundry.org/cf-cli/) installed and authenticated.
 
 ```sh
-npm install -g mbt   # if not already installed
 mbt build
 cf deploy mta_archives/*.mtar
 ```
@@ -153,7 +150,7 @@ Once you click **Via Token Exchange**, examine the **Decoded XML** tab:
 
 ## Key takeaways
 
-- **Validate the NameID format before touching any code.** For SuccessFactors concurrent employment scenarios, the assertion must carry the SuccessFactors user ID — not the email address.
+- Validate the NameID format before touching any code.
 - **`xs.user.attributes` in the JWT and the XSUAA `/userinfo` response are different things.** The JSONPath in `userIdSource` must use `$['user_attributes']['ec_userid'][0]`, not `$['xs.user.attributes']['ec_userid'][0]`. The Destination Service reads from `/userinfo`, not from the token payload.
 
 NOTE: We are using `$['user_attributes']['ec_userid'][0]` because the token used by the SAP Cloud SDK is the one raised by XSUAA for the destination service, considering the initial token of the CAP application. Meaning that when the token of the destination service is built and then used for retrieving the destination with the SAML, the token of the destination service with the embedded user details is used. NO X-USER-TOKEN header is used. It is used the Authorization header against the destination service. That is why, since the 'user_attrbitues' scope is in the token, the destination service knows that a call against XSUAA should be done to retrieve custom params. If by any chance you are retrieving destinations with the APIs of the destination service explained in the business accelerator hub, and using the X-user-token header, you can use the `$['xs.user.attributes']['ec_userid'][0]`.
